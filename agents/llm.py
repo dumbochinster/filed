@@ -196,7 +196,7 @@ class OllamaClient(Client):
                 "stream": False,
                 "format": "json",
                 "think": False,  # skip the long reasoning preamble; we only need the JSON answer
-                "options": {"temperature": 0, "num_ctx": 8192},
+                "options": {"temperature": 0, "num_ctx": 4096},
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},

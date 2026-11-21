@@ -75,6 +75,10 @@ Not run yet. The benchmark compares Filed with a single-prompt baseline on the s
 - Not modelled: surcharge (income above Rs 50 lakh goes to a person), more than one house property, advance-tax challan dates, business income, foreign assets, crypto.
 - Several rules rest on secondary sources; `docs/tax_rules.md` marks each as confirmed, interpretation or simplified.
 
+## Licence
+
+MIT, see `LICENSE`.
+
 ## AI tools, models and libraries used
 
 To be completed before submission (the line about the coding assistant is worded with the author).

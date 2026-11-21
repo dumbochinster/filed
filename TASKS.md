@@ -8,7 +8,7 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 - [x] tax rules verified and written down (docs/tax_rules.md)
 - [x] taxengine with hand-worked tests (46 passing)
 - [ ] cross-check a few cases against the official calculator (interactive app, needs a person)
-- [ ] create the public GitHub repo (needs `gh` installed and logged in)
+- [x] public GitHub repo: https://github.com/dumbochinster/filed
 
 ## 23-24 Nov: synthetic taxpayers
 - [x] synth/people.py, traps.py, truth.json
@@ -17,7 +17,7 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 
 ## 25 Nov
 - [x] agents/llm.py (Gemini, fake for tests)
-- [ ] one live model call works (needs the key in .env)  <- BLOCKED on key
+- [x] live model calls work (Gemini; local Qwen through Ollama also supported)
 
 ## 26-27 Nov: agents
 - [x] intake, reconcile
@@ -26,7 +26,7 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 
 ## 28-29 Nov: benchmark
 - [x] baseline, metrics, run_bench (resumable)
-- [ ] 3 repeats for Filed and the baseline  <- BLOCKED on key
+- [ ] 3 repeats for Filed and the baseline (Gemini lite running; Qwen as a second model)
 
 ## 30 Nov - 1 Dec: demo app
 - [x] new return page with live steps
@@ -46,3 +46,6 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 - **22 Nov (later):** Everything that does not need the key is built: 50 synthetic clients with 16 planted traps, the full agent pipeline, the benchmark harness, the Streamlit app, pitch and demo script. 86 tests pass; with the test-only oracle the pipeline matches the known answer on all 50 cases.
   Blocked on: Gemini key (all real runs), GitHub login (CLI installed, waiting for the one-time code to be entered).
   Next: with the key, one live call, a 5-case trial, then the full benchmark.
+- **22 Nov (night):** Repo pushed. Free Gemini quota is 20 requests a day per model, so the benchmark runs on gemini-3.5-flash-lite; a second run on local Qwen 9B (Ollama) is in progress. Added Groq, Cerebras, Mistral and Ollama providers, request timeout and a quota stop. Licence and CI added.
+  Blocked on: nothing technical; waiting for the runs. Needs the author: README AI-tools wording, Keploy star, official-calculator spot check, demo video.
+  Next: read the results, fix generic weaknesses, put real numbers in the README.
