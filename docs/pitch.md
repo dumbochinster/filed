@@ -30,7 +30,7 @@ Later: freelancers (ITR-4), NRIs, and employers who offer it as a benefit to sta
 
 ## Evidence
 
-Measured on synthetic taxpayers with planted traps and known correct answers, against a single-prompt baseline on the same model. The headline number is the false-automation rate: how often a return marked "ready to file" is actually wrong. The numbers are in [bench/results.md](../bench/results.md) once the benchmark has run; the README quotes them.
+Measured on synthetic taxpayers with planted traps and known correct answers, against a single-prompt baseline using the same model (free-tier Gemini, one repeat). On a held-out set of 29 cases never used during development, Filed got 100% of returns exactly right and never marked a wrong return as ready; the single prompt got 17% right, and 83% of the returns it called ready were wrong. 79% of cases finished with no human; the rest were the cases that truly needed one. Our first design, where a model reviewer could block returns, over-escalated (16% hands-off), so we changed it and show both. Details and limits: [bench/results.md](../bench/results.md). The documents are synthetic and clean, so these numbers say nothing yet about messy real scans.
 
 ## What it does not do yet
 

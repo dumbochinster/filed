@@ -146,3 +146,30 @@ def test_extraction_check_scores_a_perfect_and_a_flawed_reader(tmp_path):
         cases, WrongTds(cases / "case_001" / "truth.json"), 1
     )
     assert docs["form16"][0] == 0 and any("tds_deducted" in m for m in mismatches)
+
+
+def test_partial_report_scores_only_cases_every_system_finished(tmp_path):
+    cases = generate(6, 11, tmp_path / "cases")
+    runs = tmp_path / "runs"
+
+    def make_llm(rep, folder):
+        return OracleLLM(folder / "truth.json") if make_llm.system == "filed" else CannedLLM()
+
+    for system, limit in (("filed", 4), ("baseline", 3)):
+        make_llm.system = system
+        run_bench.run(cases, 1, [system], make_llm, runs, limit=limit, log=lambda m: None)
+    with pytest.raises(SystemExit):
+        report.build(cases, runs, tmp_path / "full")
+    report.build(cases, runs, tmp_path / "part", partial=True)
+    text = (tmp_path / "part" / "results.md").read_text(encoding="utf-8")
+    assert (
+        "Cases: 3 synthetic" in text and "±" not in text.split("## By trap")[0].split("Headline")[1]
+    )
+
+
+def test_replay_never_calls_a_model_and_misses_loudly(tmp_path):
+    from agents.llm import CachedClient, NoModel
+
+    client = CachedClient(NoModel("replay"), tmp_path)
+    with pytest.raises(LookupError):
+        client.complete_json("system", "never cached")

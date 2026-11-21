@@ -27,24 +27,28 @@ def load_truth(cases_dir):
 
 
 def load_runs(runs_dir, system, truth):
-    """Scores grouped by repeat. Only repeats that cover every case are returned."""
+    """Scores grouped by repeat, however many cases each repeat covers."""
     by_rep = {}
     for path in sorted((Path(runs_dir) / system).glob("*_rep*.json")):
         case_id, rep = path.stem.rsplit("_rep", 1)
         if case_id in truth:
             result = json.loads(path.read_text(encoding="utf-8"))
             by_rep.setdefault(int(rep), []).append(score_case(result, truth[case_id]))
-    return {rep: s for rep, s in sorted(by_rep.items()) if len(s) == len(truth)}
+    return dict(sorted(by_rep.items()))
 
 
 def pct(pair):
     mean, spread = pair
-    return "n/a" if mean is None else f"{mean * 100:.1f}% ± {spread * 100:.1f}"
+    if mean is None:
+        return "n/a"
+    return f"{mean * 100:.1f}%" + ("" if spread is None else f" ± {spread * 100:.1f}")
 
 
 def number(pair, unit=""):
     mean, spread = pair
-    return "n/a" if mean is None else f"{mean:,.0f}{unit} ± {spread:,.0f}"
+    if mean is None:
+        return "n/a"
+    return f"{mean:,.0f}{unit}" + ("" if spread is None else f" ± {spread:,.0f}")
 
 
 METRIC_ROWS = [
@@ -133,15 +137,34 @@ def write_chart(summary, path):
     plt.close(fig)
 
 
-def build(cases_dir, runs_dir, out_dir):
+def complete_repeats(runs, n_cases, partial):
+    """Keep repeats that cover every case. With `partial`, keep the cases every system finished."""
+    if not partial:
+        complete = {
+            s: {r: sc for r, sc in reps.items() if len(sc) == n_cases} for s, reps in runs.items()
+        }
+        return {s: reps for s, reps in complete.items() if reps}
+    kept = {s: {} for s in runs}
+    for rep in set.intersection(*(set(reps) for reps in runs.values())):
+        common = set.intersection(*({sc["case_id"] for sc in reps[rep]} for reps in runs.values()))
+        for s, reps in runs.items():
+            kept[s][rep] = [sc for sc in reps[rep] if sc["case_id"] in common]
+    return {s: reps for s, reps in kept.items() if reps}
+
+
+def build(cases_dir, runs_dir, out_dir, title="Benchmark results", partial=False):
     truth = load_truth(cases_dir)
     runs = {s: load_runs(runs_dir, s, truth) for s in SYSTEM_LABELS}
     runs = {s: r for s, r in runs.items() if r}
+    runs = complete_repeats(runs, len(truth), partial)
     if not runs:
-        raise SystemExit("no complete repeats found; run bench.run_bench first")
+        raise SystemExit("no complete repeats found; run bench.run_bench first (or pass --partial)")
     summary = {s: across_repeats([summarise(sc) for sc in r.values()]) for s, r in runs.items()}
     meta_path = Path(runs_dir) / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+    if "replayed" in meta.get("model", ""):
+        for metrics in summary.values():  # a replay takes no real time
+            metrics["seconds_per_case"] = (None, None)
     out_dir = Path(out_dir)
 
     head = (
@@ -167,11 +190,11 @@ def build(cases_dir, runs_dir, out_dir):
     )
     failures = failure_lines(runs.get("filed", {})) or ["- none in the repeats that were run"]
 
-    n_cases = len(truth)
+    n_cases = len(next(iter(next(iter(runs.values())).values())))
     reps = {s: len(r) for s, r in runs.items()}
-    text = f"""# Benchmark results
+    text = f"""# {title}
 
-Model: `{meta.get("model", "unknown")}`. Cases: {n_cases} synthetic taxpayers. Complete repeats: {reps}. Run date: {meta.get("date", "unknown")}.
+Model: `{meta.get("model", "unknown")}`. Model reviewer: {meta.get("reviewer", "unknown")}. Cases: {n_cases} synthetic taxpayers. Complete repeats: {reps}. Run date: {meta.get("date", "unknown")}.
 Every number below comes from `runs/`; nothing is estimated. Values are mean ± standard deviation across repeats.
 
 ## Headline
@@ -217,8 +240,12 @@ def main():
     parser.add_argument("--cases", default="data/cases")
     parser.add_argument("--runs", default="runs")
     parser.add_argument("--out", default="bench")
+    parser.add_argument("--title", default="Benchmark results")
+    parser.add_argument(
+        "--partial", action="store_true", help="score only the cases every system finished"
+    )
     args = parser.parse_args()
-    print("wrote", build(args.cases, args.runs, args.out))
+    print("wrote", build(args.cases, args.runs, args.out, args.title, args.partial))
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 
 ## 28-29 Nov: benchmark
 - [x] baseline, metrics, run_bench (resumable)
-- [ ] 3 repeats for Filed and the baseline (Gemini lite running; Qwen as a second model)
+- [x] benchmark run: dev set (50 cases, 1 repeat), held-out set (29 cases, 1 repeat); 3 repeats not possible on the free tier
 
 ## 30 Nov - 1 Dec: demo app
 - [x] new return page with live steps
@@ -34,7 +34,7 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 
 ## 2-5 Dec
 - [x] README with limitations
-- [ ] add the results from bench/results.md to the README
+- [x] results added to the README, pitch and demo script
 - [x] demo script and pitch written
 - [ ] record the video (needs the author)
 - [ ] submit
@@ -49,3 +49,5 @@ Plan: see PLAN.md. Submit on 5 Dec; the deadline is 6 Dec, 11:59 pm IST.
 - **22 Nov (night):** Repo pushed. Free Gemini quota is 20 requests a day per model, so the benchmark runs on gemini-3.5-flash-lite; a second run on local Qwen 9B (Ollama) is in progress. Added Groq, Cerebras, Mistral and Ollama providers, request timeout and a quota stop. Licence and CI added.
   Blocked on: nothing technical; waiting for the runs. Needs the author: README AI-tools wording, Keploy star, official-calculator spot check, demo video.
   Next: read the results, fix generic weaknesses, put real numbers in the README.
+- **22 Nov (final):** Benchmark done on the free Gemini tier and written up. Filed: 100% exact returns on both the dev set and a held-out set, 0% wrong among returns called ready; single prompt: 15-17% exact. The model reviewer over-escalated (hands-off 16%), so it is now off by default (80% hands-off). Limits: synthetic clean documents, one repeat, held-out run stopped at 29 of 50 cases.
+  Needs the author: README AI-tools wording, Keploy star, official-calculator spot check, demo video, submission on the dashboard (opens 4 Dec), rotate the Gemini key.

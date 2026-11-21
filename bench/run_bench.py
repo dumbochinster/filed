@@ -10,7 +10,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from agents.llm import QuotaExhausted
+from agents.llm import CachedClient, NoModel, QuotaExhausted
 from agents.pipeline import run_case as run_filed
 from bench import baseline
 
@@ -69,27 +69,37 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--systems", default="filed,baseline")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--replay-model", default="cached answers")
+    parser.add_argument(
+        "--replay-from",
+        help="replay cached model answers from this runs folder; no model is called",
+    )
     parser.add_argument("--reviewer", choices=["off", "advisory", "gate"], default="off")
     args = parser.parse_args()
 
     clients = {}
 
     def make_llm(rep, folder):
+        if args.replay_from and rep not in clients:
+            source = Path(args.replay_from) / "cache" / f"rep{rep}"
+            clients[rep] = CachedClient(NoModel(args.replay_model), source)
         if rep not in clients:
             clients[rep] = make_client(cache_dir=Path(args.out) / "cache" / f"rep{rep}")
         return clients[rep]
 
     systems = args.systems.split(",")
-    run(args.cases, args.repeats, systems, make_llm, args.out, args.limit, reviewer=args.reviewer)
-    first = next(iter(clients.values()), None)
+    # Record the settings first, so a run that is stopped early still says how it was configured.
     meta = {
-        "model": first.model if first else None,
+        "model": make_llm(1, None).model
+        + (" (replayed from saved answers)" if args.replay_from else ""),
         "repeats": args.repeats,
         "reviewer": args.reviewer,
         "cases": len(case_folders(args.cases, args.limit)),
         "date": date.today().isoformat(),
     }
+    Path(args.out).mkdir(parents=True, exist_ok=True)
     Path(args.out, "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    run(args.cases, args.repeats, systems, make_llm, args.out, args.limit, reviewer=args.reviewer)
 
 
 if __name__ == "__main__":

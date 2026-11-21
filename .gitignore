@@ -9,3 +9,4 @@ data/real/
 .ruff_cache/
 data/cases/
 data/heldout/
+PLAN.md

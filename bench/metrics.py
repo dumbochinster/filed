@@ -76,7 +76,9 @@ def across_repeats(per_repeat: list) -> dict:
     out = {}
     for key in per_repeat[0]:
         values = [r[key] for r in per_repeat if r[key] is not None]
-        out[key] = (mean(values), pstdev(values)) if values else (None, None)
+        out[key] = (
+            (mean(values), pstdev(values) if len(values) > 1 else None) if values else (None, None)
+        )
     return out
 
 

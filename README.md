@@ -4,7 +4,7 @@
 
 Built for Homingo Hack Days Edition 01, Agents track, statement A2 "The full-stack AI firm".
 
-> Status: everything except the live model calls is built and tested. Benchmark results are added here only after a real run; nothing in this file is estimated.
+> Status: built, tested and benchmarked on synthetic data. Every number below comes from saved runs; nothing is estimated.
 
 ## The problem
 
@@ -13,16 +13,16 @@ About 7.3 crore income-tax returns are filed in India each year. The documents r
 ## What the firm does
 
 ```
-documents ─► intake ─► reconcile ─► decide ─► review ─► escalate ─► deliver
- (PDF, CSV,   reads     cross-checks  form +    second    only real   return JSON,
-  JSON)       PDFs      every source  regime    model     questions   computation sheet,
-              (model)   (code)        (engine)  pass      to a person client note
+documents ─► intake ─► reconcile ─► decide ─► escalate ─► deliver
+ (PDF, CSV,   reads     cross-checks  form +    only real   return JSON,
+  JSON)       PDFs      every source  regime    questions   computation sheet,
+              (model)   (code)        (engine)  to a person client note
 ```
 
 1. **Intake**: the model reads Form 16, bank certificates and rent receipts; code reads the AIS, broker CSV and questionnaire.
 2. **Reconcile** (code): dedupes uploads, matches TDS against the AIS, finds income the client did not declare, checks landlord PAN, and spots anything out of scope.
 3. **Decide** (tax engine): ITR form, both regimes computed, the cheaper one chosen. Belated filers are limited to the new regime.
-4. **Review**: a second model pass looks for contradictions in the draft.
+4. **Review** (optional, off by default): a second model pass can add advisory notes; in `gate` mode it can also block a return. The benchmark showed gating over-escalates, see Results.
 5. **Escalate**: only flags that need judgment become one-line questions for the tax expert.
 6. **Deliver**: draft return data, an old-versus-new computation sheet, and a plain note to the client.
 
@@ -55,8 +55,9 @@ python -m agents.llm --ping           # one real call to check the setup
 
 python -m synth.generate --count 50   # synthetic clients into data/cases
 python -m agents.pipeline data/cases/case_001
-python -m bench.run_bench --repeats 3 # resumable; use --limit 5 for a trial
-python -m bench.report                # writes bench/results.md and chart.png
+python -m bench.run_bench --repeats 3 # resumable; --limit 5 for a trial; --reviewer off|advisory|gate
+python -m bench.report --out bench/mine --title "My run"
+python -m bench.overview              # combines the reports in bench/ into bench/results.md
 streamlit run app/main.py
 ```
 
@@ -66,7 +67,23 @@ streamlit run app/main.py
 
 ## Results
 
-Not run yet. The benchmark compares Filed with a single-prompt baseline on the same model and documents, over synthetic taxpayers, at least 3 repeats, with failures listed. See `bench/results.md` once it exists.
+Measured on synthetic taxpayers with planted traps and known correct answers, against the same model asked to do everything in one prompt. Model: `gemini-3.5-flash-lite` on the free tier, temperature 0, one repeat per run. Full tables, per-trap counts and the limits are in [bench/results.md](bench/results.md).
+
+| | Filed | Single prompt |
+|---|---|---|
+| Exact return, dev set (50 cases) | 100% | 15% |
+| Exact return, held-out set (29 cases) | 100% | 17% |
+| Returns called ready that were wrong, held-out | 0% | 83% |
+| Cases that needed a person and were escalated, held-out | 100% | 50% |
+| Cases finished correctly with no person, held-out | 79% | 14% |
+
+![chart](bench/chart.png)
+
+What this does and does not show:
+- The gap comes mostly from design, not from a smarter model: tax arithmetic, regime comparison and reconciliation are code, and the model only reads documents.
+- Our first configuration let a model reviewer block returns. It sent 32 of 40 clean cases to the expert on wrong objections (hands-off rate 16%). We made the reviewer optional and off by default; replaying the same saved answers without it gives 80% hands-off, and the held-out set confirms it.
+- The documents are synthetic and clean, so reading them is easy. Real scans and photos are untested and will be harder.
+- One repeat per run, and the held-out run was stopped at 29 of 50 cases, because the free tier is rate limited. Run-to-run variation is not measured.
 
 ## Limits
 
@@ -81,7 +98,12 @@ MIT, see `LICENSE`.
 
 ## AI tools, models and libraries used
 
-To be completed before submission (the line about the coding assistant is worded with the author).
+**AI tools used to build this project**
+- An AI coding assistant was used to write code, tests and documentation under the author's direction. All of its output was run against the test suite and reviewed by the author.
 
-- Runtime model: Google Gemini through the `google-genai` SDK; the exact model name is recorded in `bench/results.md`. The Anthropic SDK is supported as an alternative provider.
-- Libraries: `pypdf`, `fpdf2`, `streamlit`, `matplotlib`, `python-dotenv`, `pytest`, `ruff`
+**Models used at runtime**
+- Google Gemini `gemini-3.5-flash-lite` through the `google-genai` SDK (free tier): reads the PDFs, and answers the single-prompt baseline in the benchmark.
+- Optional providers behind the same interface: Anthropic, Groq, Cerebras, Mistral, and a local model through Ollama (tested with Qwen 3.5 9B).
+
+**Libraries**
+- Python standard library, `pypdf` (read PDFs), `fpdf2` (write the synthetic PDFs), `streamlit` (demo app), `matplotlib` (chart), `python-dotenv`, `pytest`, `ruff`

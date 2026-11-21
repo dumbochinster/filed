@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 RETRY_WAITS = [2, 5, 10, 20, 40]
 REQUEST_TIMEOUT_MS = 90_000
 LOCAL_TIMEOUT_S = 300
-DEFAULT_MODELS = {"gemini": "gemini-2.5-flash", "anthropic": "claude-sonnet-5-5"}
+DEFAULT_MODELS = {"gemini": "gemini-2.5-flash"}
 
 
 class LLMError(Exception):
@@ -228,6 +228,17 @@ class OllamaClient(Client):
         return isinstance(error, (TimeoutError, urllib.error.URLError))
 
 
+class NoModel:
+    """Stands in for a provider when replaying from the cache: any call is a cache miss."""
+
+    def __init__(self, model: str):
+        self.model = model
+        self.calls = self.tokens_in = self.tokens_out = 0
+
+    def complete_json(self, system: str, prompt: str) -> dict:
+        raise LookupError("this prompt is not in the cache and replay mode never calls a model")
+
+
 class CachedClient:
     """Remembers answers on disk, so a re-run of the same prompt costs nothing."""
 
@@ -271,8 +282,10 @@ def make_client(provider: str | None = None, model: str | None = None, cache_dir
         base_url, key_name, default_model = OPENAI_COMPATIBLE[provider]
     else:
         key_name = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}[provider]
-        default_model = DEFAULT_MODELS[provider]
+        default_model = DEFAULT_MODELS.get(provider)
     model = model or os.getenv("FILED_MODEL") or default_model
+    if not model:
+        raise LLMError(f"set FILED_MODEL in .env: {provider} has no default model")
     key = os.getenv(key_name)
     if not key:
         raise LLMError(f"{key_name} is not set; put it in the .env file")
