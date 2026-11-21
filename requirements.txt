@@ -1,0 +1,9 @@
+google-genai
+anthropic
+pypdf
+fpdf2
+streamlit
+matplotlib
+python-dotenv
+pytest
+ruff

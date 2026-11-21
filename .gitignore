@@ -1,0 +1,9 @@
+venv/
+.env
+__pycache__/
+*.pyc
+runs/
+*.log
+data/real/
+.pytest_cache/
+.ruff_cache/
