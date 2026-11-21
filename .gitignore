@@ -7,3 +7,4 @@ runs/
 data/real/
 .pytest_cache/
 .ruff_cache/
+data/cases/

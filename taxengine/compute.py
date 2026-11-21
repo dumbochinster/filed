@@ -46,9 +46,13 @@ def compute(profile: Profile, regime: str, filing_date: date = rules.DUE_DATE) -
     if regime not in ("old", "new"):
         raise ValueError("regime must be 'old' or 'new'")
     if regime == "old" and filing_date > rules.DUE_DATE:
-        raise UnsupportedProfile("the old regime cannot be chosen in a belated return")
+        raise UnsupportedProfile(
+            "the old regime cannot be chosen in a belated return", "OLD_REGIME_BELATED"
+        )
     if profile.advance_tax:
-        raise UnsupportedProfile("advance-tax payments need their dates checked by a person")
+        raise UnsupportedProfile(
+            "advance-tax payments need their dates checked by a person", "ADVANCE_TAX"
+        )
 
     result = Computation(regime=regime, filing_date=filing_date)
     salary = salary_breakdown(profile, regime)
@@ -71,7 +75,9 @@ def compute(profile: Profile, regime: str, filing_date: date = rules.DUE_DATE) -
     ltcg_after_exemption = max(0, profile.ltcg_112a - rules.LTCG_112A_EXEMPTION)
     result.total_income = result.normal_income + profile.stcg_111a + ltcg_after_exemption
     if result.total_income > rules.SURCHARGE_THRESHOLD:
-        raise UnsupportedProfile("income above 50 lakh attracts surcharge, which is not modelled")
+        raise UnsupportedProfile(
+            "income above 50 lakh attracts surcharge, which is not modelled", "INCOME_OVER_50L"
+        )
 
     result.slab_tax = slab_tax(result.normal_income, slabs_for(profile, regime))
     result.rebate, result.marginal_relief = rebate_and_relief(

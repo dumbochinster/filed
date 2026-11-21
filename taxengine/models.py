@@ -9,6 +9,10 @@ from taxengine import rules
 class UnsupportedProfile(Exception):
     """The case is outside what the engine models; a human has to handle it."""
 
+    def __init__(self, message: str, code: str = "OUT_OF_SCOPE"):
+        super().__init__(message)
+        self.code = code
+
 
 @dataclass(frozen=True)
 class Employer:
