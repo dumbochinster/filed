@@ -130,13 +130,13 @@ def page_expert_queue():
     for case, result in sorted(waiting.items()):
         done = approvals.get(case, [])
         with st.expander(f"{case}: {len(result['questions']) - len(done)} open question(s)"):
-            for q in result["questions"]:
+            for i, q in enumerate(result["questions"]):
                 st.write(f"**{q['question']}**")
                 st.caption(q["detail"])
-                if q["code"] in done:
+                if i in done:
                     st.write("Resolved")
-                elif st.button("Mark resolved", key=f"{case}-{q['code']}"):
-                    approvals[case] = done + [q["code"]]
+                elif st.button("Mark resolved", key=f"{case}-{i}"):
+                    approvals[case] = done + [i]
                     save_approvals(approvals)
                     st.rerun()
 

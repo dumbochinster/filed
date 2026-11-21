@@ -9,6 +9,7 @@ import json
 from datetime import date
 from pathlib import Path
 
+from agents.llm import QuotaExhausted
 from agents.pipeline import run_case as run_filed
 from bench import baseline
 
@@ -40,6 +41,9 @@ def run(cases_dir, repeats, systems, make_llm, out_dir, limit=None, log=print):
                     continue
                 try:
                     result = SYSTEMS[name](folder, make_llm(rep, folder))
+                except QuotaExhausted as error:
+                    log(f"stopping: {error}. Run the same command again after the quota resets.")
+                    return done
                 except Exception as error:
                     if not is_infrastructure_error(error):
                         raise

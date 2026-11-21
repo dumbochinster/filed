@@ -10,16 +10,24 @@ import json
 import os
 import re
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 RETRY_WAITS = [2, 5, 10, 20, 40]
+REQUEST_TIMEOUT_MS = 90_000
+LOCAL_TIMEOUT_S = 300
 DEFAULT_MODELS = {"gemini": "gemini-2.5-flash", "anthropic": "claude-sonnet-5-5"}
 
 
 class LLMError(Exception):
     pass
+
+
+class QuotaExhausted(Exception):
+    """The provider's daily limit is used up. Retrying today is pointless."""
 
 
 def parse_json(text: str) -> dict:
@@ -74,9 +82,12 @@ class Client:
 class GeminiClient(Client):
     def __init__(self, model: str, api_key: str):
         from google import genai
+        from google.genai import types
 
         super().__init__(model)
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(
+            api_key=api_key, http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS)
+        )
 
     def generate(self, system, prompt):
         from google.genai import types
@@ -91,7 +102,10 @@ class GeminiClient(Client):
         return reply.text or "", usage.prompt_token_count or 0, usage.candidates_token_count or 0
 
     def is_retryable(self, error):
-        return getattr(error, "code", None) in (429, 500, 503)
+        if getattr(error, "code", None) in (429, 500, 503, 504):
+            return True
+        # A request that hung and hit our timeout is worth another try.
+        return isinstance(error, TimeoutError) or type(error).__module__.startswith("httpx")
 
 
 class AnthropicClient(Client):
@@ -118,6 +132,93 @@ class AnthropicClient(Client):
 
     def is_retryable(self, error):
         return isinstance(error, self.retryable)
+
+
+# Providers that speak the OpenAI chat-completions format: (base URL, key variable, default model)
+OPENAI_COMPATIBLE = {
+    "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY", "llama-3.3-70b-versatile"),
+    "cerebras": ("https://api.cerebras.ai/v1", "CEREBRAS_API_KEY", "llama-3.3-70b"),
+    "mistral": ("https://api.mistral.ai/v1", "MISTRAL_API_KEY", "mistral-small-latest"),
+}
+
+
+class OpenAICompatibleClient(Client):
+    def __init__(self, model: str, api_key: str, base_url: str):
+        super().__init__(model)
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+
+    def generate(self, system, prompt):
+        body = json.dumps(
+            {
+                "model": self.model,
+                "temperature": 0,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "filed/1.0",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_MS / 1000) as reply:
+            data = json.load(reply)
+        usage = data.get("usage", {})
+        text = data["choices"][0]["message"]["content"] or ""
+        return text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+
+    def is_retryable(self, error):
+        if isinstance(error, urllib.error.HTTPError):
+            return error.code in (429, 500, 502, 503, 504)
+        return isinstance(error, (TimeoutError, urllib.error.URLError))
+
+
+class OllamaClient(Client):
+    """A model running on this computer through Ollama. Free, private, no daily limit."""
+
+    def __init__(self, model: str, base_url: str = "http://localhost:11434"):
+        super().__init__(model)
+        self.base_url = base_url.rstrip("/")
+
+    def generate(self, system, prompt):
+        body = json.dumps(
+            {
+                "model": self.model,
+                "stream": False,
+                "format": "json",
+                "think": False,  # skip the long reasoning preamble; we only need the JSON answer
+                "options": {"temperature": 0, "num_ctx": 8192},
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=LOCAL_TIMEOUT_S) as reply:
+            data = json.load(reply)
+        return (
+            data["message"]["content"],
+            data.get("prompt_eval_count", 0),
+            data.get("eval_count", 0),
+        )
+
+    def is_retryable(self, error):
+        return isinstance(error, (TimeoutError, urllib.error.URLError))
 
 
 class CachedClient:
@@ -156,13 +257,22 @@ def make_client(provider: str | None = None, model: str | None = None, cache_dir
     """Build a client from the environment (.env is read if present)."""
     load_dotenv()
     provider = provider or os.getenv("FILED_PROVIDER", "gemini")
-    model = model or os.getenv("FILED_MODEL") or DEFAULT_MODELS[provider]
-    key_name = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}[provider]
+    if provider == "ollama":
+        client = OllamaClient(model or os.getenv("FILED_MODEL") or "qwen3.5:9b-q4_K_M")
+        return CachedClient(client, cache_dir) if cache_dir else client
+    if provider in OPENAI_COMPATIBLE:
+        base_url, key_name, default_model = OPENAI_COMPATIBLE[provider]
+    else:
+        key_name = {"gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY"}[provider]
+        default_model = DEFAULT_MODELS[provider]
+    model = model or os.getenv("FILED_MODEL") or default_model
     key = os.getenv(key_name)
     if not key:
         raise LLMError(f"{key_name} is not set; put it in the .env file")
-    cls = GeminiClient if provider == "gemini" else AnthropicClient
-    client = cls(model, key)
+    if provider in OPENAI_COMPATIBLE:
+        client = OpenAICompatibleClient(model, key, base_url)
+    else:
+        client = (GeminiClient if provider == "gemini" else AnthropicClient)(model, key)
     return CachedClient(client, cache_dir) if cache_dir else client
 
 

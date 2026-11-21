@@ -124,3 +124,103 @@ class TestReviewer:
 
         facts = make_facts()
         assert review.review(Failing(), facts, decide(facts)) == []
+
+
+class TestOpenAICompatibleClient:
+    def serve(self, reply, status=200):
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        seen = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                seen["path"] = self.path
+                seen["auth"] = self.headers["Authorization"]
+                seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                self.send_response(status)
+                self.end_headers()
+                self.wfile.write(json.dumps(reply).encode())
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return server, seen
+
+    def test_round_trip_and_token_counts(self):
+        from agents.llm import OpenAICompatibleClient
+
+        reply = {
+            "choices": [{"message": {"content": '{"ok": true}'}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 3},
+        }
+        server, seen = self.serve(reply)
+        try:
+            client = OpenAICompatibleClient(
+                "m", "secret", f"http://127.0.0.1:{server.server_port}/v1"
+            )
+            assert client.complete_json("sys", "hello") == {"ok": True}
+        finally:
+            server.shutdown()
+        assert seen["path"] == "/v1/chat/completions" and seen["auth"] == "Bearer secret"
+        assert seen["body"]["messages"][0] == {"role": "system", "content": "sys"}
+        assert (client.tokens_in, client.tokens_out) == (12, 3)
+
+
+def test_quota_exhausted_stops_the_benchmark_without_scoring(tmp_path):
+    from agents.llm import QuotaExhausted
+    from bench import run_bench
+    from synth.generate import generate
+
+    cases = generate(3, 11, tmp_path / "cases")
+
+    def out_of_quota(rep, folder):
+        raise QuotaExhausted("daily limit")
+
+    messages = []
+    assert (
+        run_bench.run(cases, 1, ["filed"], out_of_quota, tmp_path / "runs", log=messages.append)
+        == 0
+    )
+    assert len(messages) == 1 and "stopping" in messages[0]
+
+
+class TestOllamaClient:
+    def test_request_shape_and_token_counts(self):
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        from agents.llm import OllamaClient
+
+        seen = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                seen["path"] = self.path
+                seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                self.send_response(200)
+                self.end_headers()
+                reply = {
+                    "message": {"content": '{"ok": true}'},
+                    "prompt_eval_count": 40,
+                    "eval_count": 7,
+                }
+                self.wfile.write(json.dumps(reply).encode())
+
+            def log_message(self, *args):
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            client = OllamaClient("qwen-test", f"http://127.0.0.1:{server.server_port}")
+            assert client.complete_json("sys", "hi") == {"ok": True}
+        finally:
+            server.shutdown()
+        assert seen["path"] == "/api/chat"
+        assert seen["body"]["think"] is False and seen["body"]["format"] == "json"
+        assert (client.tokens_in, client.tokens_out) == (40, 7)
