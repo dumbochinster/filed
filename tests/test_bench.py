@@ -124,3 +124,25 @@ def test_bugs_are_not_swallowed(tmp_path):
 
     with pytest.raises(KeyError):
         run_bench.run(cases, 1, ["filed"], buggy, tmp_path / "runs", log=lambda m: None)
+
+
+def test_extraction_check_scores_a_perfect_and_a_flawed_reader(tmp_path):
+    from bench import extraction_check
+
+    cases = generate(3, 5, tmp_path / "cases")
+    _fields, docs, mismatches = extraction_check.check(
+        cases, OracleLLM(cases / "case_001" / "truth.json"), 1
+    )
+    assert mismatches == [] and all(ok == total for ok, total in docs.values())
+
+    class WrongTds(OracleLLM):
+        def complete_json(self, system, prompt):
+            answer = dict(super().complete_json(system, prompt))
+            if "tds_deducted" in answer:
+                answer["tds_deducted"] += 1
+            return answer
+
+    _, docs, mismatches = extraction_check.check(
+        cases, WrongTds(cases / "case_001" / "truth.json"), 1
+    )
+    assert docs["form16"][0] == 0 and any("tds_deducted" in m for m in mismatches)

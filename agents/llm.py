@@ -45,6 +45,9 @@ class Client:
         self.calls = 0
         self.tokens_in = 0
         self.tokens_out = 0
+        # Seconds to leave between calls, to stay under a provider's per-minute limit.
+        self.min_interval = float(os.getenv("FILED_MIN_INTERVAL", "0"))
+        self._last_call = 0.0
 
     def generate(self, system: str, prompt: str) -> tuple[str, int, int]:
         """Provider call. Returns (text, input tokens, output tokens)."""
@@ -66,6 +69,10 @@ class Client:
 
     def _generate_with_backoff(self, system: str, prompt: str) -> str:
         for wait in RETRY_WAITS + [None]:
+            pause = self._last_call + self.min_interval - time.time()
+            if pause > 0:
+                time.sleep(pause)
+            self._last_call = time.time()
             try:
                 text, tokens_in, tokens_out = self.generate(system, prompt)
             except Exception as error:
