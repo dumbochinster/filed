@@ -34,8 +34,12 @@ class CaseResult:
         return asdict(self)
 
 
-def run_case(folder, llm, on_event=None, use_reviewer=True) -> CaseResult:
-    """Intake, reconcile, decide, review, escalate, deliver. `on_event(step, message)` is optional."""
+def run_case(folder, llm, on_event=None, reviewer="off") -> CaseResult:
+    """Intake, reconcile, decide, review, escalate, deliver. `on_event(step, message)` is optional.
+
+    reviewer: "off" skips the model reviewer, "advisory" adds its concerns as notes only,
+    "gate" lets a high-severity concern send the case to the expert.
+    """
     started = time.time()
     before = (llm.tokens_in, llm.tokens_out, llm.calls)
     events = []
@@ -67,8 +71,8 @@ def run_case(folder, llm, on_event=None, use_reviewer=True) -> CaseResult:
             f"{decision.itr_form}, {decision.regime} regime; "
             f"net payable Rs {decision.chosen.net_payable:,}",
         )
-        if use_reviewer:
-            for flag in review.review(llm, facts, decision):
+        if reviewer != "off":
+            for flag in review.review(llm, facts, decision, gate=reviewer == "gate"):
                 log("review", f"{flag.resolution}: {flag.message}")
             log("review", "Reviewer finished")
     else:

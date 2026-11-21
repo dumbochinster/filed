@@ -33,8 +33,11 @@ def summary(facts: Facts, decision: Decision) -> str:
     return json.dumps(data, default=str, indent=1)
 
 
-def review(llm, facts: Facts, decision: Decision) -> list:
-    """Adds a flag for each concern. A reviewer that fails to answer is skipped, not trusted."""
+def review(llm, facts: Facts, decision: Decision, gate: bool = False) -> list:
+    """Adds a flag for each concern. Only when `gate` is set can a high-severity concern block the return.
+
+    A reviewer that fails to answer is skipped, not trusted.
+    """
     try:
         answer = llm.complete_json(SYSTEM, summary(facts, decision))
     except LLMError:
@@ -51,7 +54,7 @@ def review(llm, facts: Facts, decision: Decision) -> list:
         if not message:
             continue
         high = concern.get("severity") == "high"
-        flag = Flag("REVIEWER_CONCERN", message, "needs_human" if high else "info")
+        flag = Flag("REVIEWER_CONCERN", message, "needs_human" if gate and high else "info")
         facts.flags.append(flag)
         added.append(flag)
     return added

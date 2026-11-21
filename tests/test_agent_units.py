@@ -98,14 +98,18 @@ def make_facts():
 
 
 class TestReviewer:
-    def run_review(self, answer):
+    def run_review(self, answer, gate=True):
         facts = make_facts()
-        review.review(ScriptedLLM([answer]), facts, decide(facts))
+        review.review(ScriptedLLM([answer]), facts, decide(facts), gate=gate)
         return facts.flags
 
     def test_high_concern_needs_a_person(self):
         flags = self.run_review({"concerns": [{"message": "odd", "severity": "high"}]})
         assert [(f.code, f.resolution) for f in flags] == [("REVIEWER_CONCERN", "needs_human")]
+
+    def test_without_the_gate_even_a_high_concern_is_only_advice(self):
+        flags = self.run_review({"concerns": [{"message": "odd", "severity": "high"}]}, gate=False)
+        assert [(f.code, f.resolution) for f in flags] == [("REVIEWER_CONCERN", "info")]
 
     def test_low_concern_is_only_information(self):
         flags = self.run_review({"concerns": [{"message": "minor", "severity": "low"}]})

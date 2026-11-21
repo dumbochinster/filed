@@ -109,3 +109,27 @@ def test_document_kinds_are_recognised():
 def test_pdf_text_survives_loading(cases):
     files = load_case(Path(cases) / "case_001")
     assert files.documents and all(d.kind != "unknown" for d in files.documents)
+
+
+def test_reviewer_modes(cases):
+    folder = Path(cases) / "case_001"
+    truth = json.loads((folder / "truth.json").read_text(encoding="utf-8"))
+    assert truth["expected"]["status"] == "ready_to_file"
+
+    class StrictReviewer(OracleLLM):
+        def complete_json(self, system, prompt):
+            if "review a draft" in system:
+                self.calls += 1
+                return {"concerns": [{"message": "looks odd", "severity": "high"}]}
+            return super().complete_json(system, prompt)
+
+    def run(mode):
+        llm = StrictReviewer(folder / "truth.json")
+        return run_case(folder, llm, reviewer=mode), llm.calls
+
+    off, calls_off = run("off")
+    advisory, calls_advisory = run("advisory")
+    gated, _ = run("gate")
+    assert calls_advisory == calls_off + 1  # the reviewer is only called when asked for
+    assert off.status == advisory.status == "ready_to_file"
+    assert gated.status == "needs_human"

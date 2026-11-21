@@ -5,6 +5,7 @@ python -m bench.run_bench --limit 5 --repeats 1     # quick trial on 5 cases
 """
 
 import argparse
+import functools
 import json
 from datetime import date
 from pathlib import Path
@@ -12,8 +13,6 @@ from pathlib import Path
 from agents.llm import QuotaExhausted
 from agents.pipeline import run_case as run_filed
 from bench import baseline
-
-SYSTEMS = {"filed": run_filed, "baseline": baseline.run_case}
 
 
 def is_infrastructure_error(error):
@@ -28,8 +27,12 @@ def case_folders(cases_dir, limit=None):
     return folders[:limit] if limit else folders
 
 
-def run(cases_dir, repeats, systems, make_llm, out_dir, limit=None, log=print):
+def run(cases_dir, repeats, systems, make_llm, out_dir, limit=None, log=print, reviewer="off"):
     """Run every (repeat, case, system) that has no saved result yet. Returns the number run."""
+    runners = {
+        "filed": functools.partial(run_filed, reviewer=reviewer),
+        "baseline": baseline.run_case,
+    }
     out_dir = Path(out_dir)
     folders = case_folders(cases_dir, limit)
     done = 0
@@ -40,7 +43,7 @@ def run(cases_dir, repeats, systems, make_llm, out_dir, limit=None, log=print):
                 if path.exists():
                     continue
                 try:
-                    result = SYSTEMS[name](folder, make_llm(rep, folder))
+                    result = runners[name](folder, make_llm(rep, folder))
                 except QuotaExhausted as error:
                     log(f"stopping: {error}. Run the same command again after the quota resets.")
                     return done
@@ -66,6 +69,7 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--systems", default="filed,baseline")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--reviewer", choices=["off", "advisory", "gate"], default="off")
     args = parser.parse_args()
 
     clients = {}
@@ -76,11 +80,12 @@ def main():
         return clients[rep]
 
     systems = args.systems.split(",")
-    run(args.cases, args.repeats, systems, make_llm, args.out, args.limit)
+    run(args.cases, args.repeats, systems, make_llm, args.out, args.limit, reviewer=args.reviewer)
     first = next(iter(clients.values()), None)
     meta = {
         "model": first.model if first else None,
         "repeats": args.repeats,
+        "reviewer": args.reviewer,
         "cases": len(case_folders(args.cases, args.limit)),
         "date": date.today().isoformat(),
     }
