@@ -40,7 +40,13 @@ def review(llm, facts: Facts, decision: Decision) -> list:
     except LLMError:
         return []
     added = []
-    for concern in answer.get("concerns", []):
+    concerns = answer.get("concerns", []) if isinstance(answer, dict) else []
+    for concern in concerns if isinstance(concerns, list) else []:
+        # Smaller models sometimes answer with plain strings; treat those as low severity.
+        if isinstance(concern, str):
+            concern = {"message": concern, "severity": "low"}
+        if not isinstance(concern, dict):
+            continue
         message = str(concern.get("message", "")).strip()
         if not message:
             continue

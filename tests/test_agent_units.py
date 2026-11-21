@@ -117,6 +117,14 @@ class TestReviewer:
     def test_empty_messages_are_ignored(self):
         assert self.run_review({"concerns": [{"message": " ", "severity": "high"}]}) == []
 
+    def test_plain_string_concerns_are_low_severity(self):
+        flags = self.run_review({"concerns": ["something looks odd"]})
+        assert [(f.message, f.resolution) for f in flags] == [("something looks odd", "info")]
+
+    def test_malformed_answers_add_nothing(self):
+        for answer in ({"concerns": "none"}, {"concerns": [42, None]}, ["a"], {}):
+            assert self.run_review(answer) == []
+
     def test_a_reviewer_that_fails_is_skipped(self):
         class Failing:
             def complete_json(self, system, prompt):
